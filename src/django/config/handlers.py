@@ -1,8 +1,8 @@
 from http import HTTPStatus as status
 
 from django.http import HttpRequest, JsonResponse
-from django.utils.timezone import now
-from django_guid import get_guid
+
+from config.utils import build_error_payload
 
 
 def create_error_response(
@@ -11,16 +11,11 @@ def create_error_response(
     message: str,
     http_status: int,
 ) -> JsonResponse:
-    return JsonResponse(
-        status=http_status,
-        data={
-            "code": code,
-            "message": message,
-            "traceId": str(get_guid()),
-            "timestamp": now().isoformat(),
-            "path": request.path,
-        },
-    )
+    payload = build_error_payload(request, code, message)
+    # JsonResponse expects a dict, but build_error_payload returns datetime for timestamp
+    # We should ensure it's serializable if not using a custom encoder,
+    # but JsonResponse handles datetime by default if using Django's encoder.
+    return JsonResponse(status=http_status, data=payload)
 
 
 def handler400(

@@ -7,12 +7,11 @@ import django.core.exceptions
 import django.http
 import ninja.errors
 from django.http import HttpRequest, HttpResponse
-from django.utils.timezone import now
-from django_guid import get_guid
 from ninja import NinjaAPI
 
-from api.v1.schemas import ApiError, FieldError, ValidationError
+from api.v1.schemas import ApiError, ValidationError
 from config.errors import ConflictError, ForbiddenError
+from config.utils import build_error_payload
 
 logger = logging.getLogger("django")
 
@@ -25,14 +24,13 @@ def create_error_response(
     router: NinjaAPI,
     details: dict[str, Any] | None = None,
 ) -> HttpResponse:
-    error_data = ApiError(
+    payload = build_error_payload(
+        request=request,
         code=code,
         message=message,
-        traceId=str(get_guid()),
-        timestamp=now(),
-        path=request.path,
         details=details,
     )
+    error_data = ApiError.model_validate(payload)
     return router.create_response(request, error_data, status=http_status)
 
 
@@ -41,27 +39,25 @@ def handle_validation_error(
     exc: ninja.errors.ValidationError,
     router: NinjaAPI,
 ) -> HttpResponse:
-    field_errors: list[FieldError] = []
+    field_errors_data: list[dict[str, Any]] = []
     for error in exc.errors:
-        # Ninja/Pydantic v2 error format
         loc = error.get("loc", [])
         field = ".".join(map(str, loc)) if loc else "non_field_error"
-        field_errors.append(
-            FieldError(
-                field=field,
-                issue=error.get("msg", "Unknown error"),
-                rejectedValue=error.get("input"),
-            )
+        field_errors_data.append(
+            {
+                "field": field,
+                "issue": error.get("msg", "Unknown error"),
+                "rejectedValue": error.get("input"),
+            }
         )
 
-    error_data = ValidationError(
+    payload = build_error_payload(
+        request=request,
         code="VALIDATION_FAILED",
         message="Validation failed",
-        traceId=str(get_guid()),
-        timestamp=now(),
-        path=request.path,
-        fieldErrors=field_errors,
+        field_errors=field_errors_data,
     )
+    error_data = ValidationError.model_validate(payload)
     return router.create_response(request, error_data, status=status.BAD_REQUEST)
 
 
@@ -69,37 +65,38 @@ def handle_django_validation_error(
     request: HttpRequest,
     exc: django.core.exceptions.ValidationError,
     router: NinjaAPI,
+    code: str = "VALIDATION_FAILED",
+    http_status: int = status.BAD_REQUEST,
 ) -> HttpResponse:
-    field_errors: list[FieldError] = []
+    field_errors_data: list[dict[str, Any]] = []
     if hasattr(exc, "error_dict"):
         for field, errors in exc.error_dict.items():
-            field_errors.extend(
-                FieldError(
-                    field=field,
-                    issue=str(error.message),
-                    rejectedValue=None,
-                )
+            field_errors_data.extend(
+                {
+                    "field": field,
+                    "issue": str(error.message),
+                    "rejectedValue": None,
+                }
                 for error in errors
             )
     else:
-        field_errors.extend(
-            FieldError(
-                field="non_field_error",
-                issue=str(error.message),
-                rejectedValue=None,
-            )
+        field_errors_data.extend(
+            {
+                "field": "non_field_error",
+                "issue": str(error.message),
+                "rejectedValue": None,
+            }
             for error in exc.error_list
         )
 
-    error_data = ValidationError(
-        code="VALIDATION_FAILED",
-        message="Validation failed",
-        traceId=str(get_guid()),
-        timestamp=now(),
-        path=request.path,
-        fieldErrors=field_errors,
+    payload = build_error_payload(
+        request=request,
+        code=code,
+        message="Validation failed" if code == "VALIDATION_FAILED" else "Conflict",
+        field_errors=field_errors_data,
     )
-    return router.create_response(request, error_data, status=status.BAD_REQUEST)
+    error_data = ValidationError.model_validate(payload)
+    return router.create_response(request, error_data, status=http_status)
 
 
 def handle_authentication_error(
@@ -149,10 +146,13 @@ def handle_conflict_error(
     exc: ConflictError,
     router: NinjaAPI,
 ) -> HttpResponse:
-    # Reuse handle_django_validation_error but change status code
-    response = handle_django_validation_error(request, exc.validation_error, router)
-    response.status_code = status.CONFLICT
-    return response
+    return handle_django_validation_error(
+        request,
+        exc.validation_error,
+        router,
+        code="CONFLICT",
+        http_status=status.CONFLICT,
+    )
 
 
 def handle_unknown_exception(

@@ -25,6 +25,4 @@ class ApiError(Schema):
 
 
 class ValidationError(ApiError):
-    model_config = ConfigDict(populate_by_name=True)
-
     field_errors: list[FieldError] = Field(..., alias="fieldErrors")

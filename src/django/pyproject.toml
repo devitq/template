@@ -32,7 +32,7 @@ dependencies = [
  "opentelemetry-instrumentation-urllib3>=0.56b0",
  "opentelemetry-instrumentation-wsgi>=0.56b0",
  "opentelemetry-sdk>=1.35.0",
- "orjson>=3.10.15",
+ "orjson>=3.10.15,<4.0.0",
  "pillow>=11.1.0,<12.0.0",
  "psycopg2-binary>=2.9.10,<3.0.0",
  "pydantic>=2.10.5,<3.0.0",
@@ -40,12 +40,12 @@ dependencies = [
  "python-json-logger>=3.2.1,<4.0.0",
  "pytz>=2024.2,<2025.0",
  "redis>=6.2.0,<7.0.0",
- "uvicorn[standard]>=0.34.0",
+ "uvicorn[standard]>=0.34.0,<1.0.0",
  "yandex-cloud-ml-sdk>=0.3.1,<0.4.0",
 ]
 name = "template-backend"
 readme = "README.md"
-requires-python = ">=3.12,<3.14"
+requires-python = ">=3.12,<3.15"
 version = "0.1.0"
 
 [dependency-groups]
@@ -103,6 +103,7 @@ select = [
  "FA", # flake8-future-annotations
  "FBT", # flake8-boolean-trap
  "FLY", # pyflint
+ "FLY", # pyflint
  "FURB", # refurb
  "G", # flake8-logging-format
  "I", # isort
@@ -120,7 +121,7 @@ select = [
  "RSE", # flake8-raise
  "RUF", # ruff
  "S", # flake8-bandit
- "SIM", # flake8-simplify
+ "SIM", # flake8-simpify
  "SLF", # flake8-self
  "SLOT", # flake8-slots
  "T100", # flake8-debugger
@@ -145,7 +146,8 @@ ignore = [
  "S106",
  "ERA",
  "PT022",
- "RUF",
+ "RUF001",
+ "RUF012",
 ]
 
 [tool.ruff.lint.isort]

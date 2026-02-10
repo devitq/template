@@ -17,26 +17,26 @@ fi
 # Start the application
 if [ "$OTEL_ENABLED" = "true" ]; then
     echo "Starting with OpenTelemetry instrumentation..."
-    export OTEL_PYTHON_LOGGING_AUTO_INSTRUMENTATION_ENABLED=true
-    export OTEL_TRACES_EXPORTER=${OTEL_TRACES_EXPORTER:-otlp}
-    export OTEL_METRICS_EXPORTER=${OTEL_METRICS_EXPORTER:-otlp}
-    export OTEL_LOGS_EXPORTER=${OTEL_LOGS_EXPORTER:-otlp}
-    export OTEL_EXPORTER_OTLP_ENDPOINT=${OTEL_EXPORTER_OTLP_ENDPOINT:-http://otel-collector:4317}
+    export OTEL_PYTHON_LOGGING_AUTO_INSTRUMENTATION_ENABLED="true"
+    export OTEL_TRACES_EXPORTER="${OTEL_TRACES_EXPORTER:-otlp}"
+    export OTEL_METRICS_EXPORTER="${OTEL_METRICS_EXPORTER:-otlp}"
+    export OTEL_LOGS_EXPORTER="${OTEL_LOGS_EXPORTER:-otlp}"
+    export OTEL_EXPORTER_OTLP_ENDPOINT="${OTEL_EXPORTER_OTLP_ENDPOINT:-http://otel-collector:4317}"
 
     exec opentelemetry-instrument \
         --service_name "${OTEL_SERVICE_NAME:-backend-django}" \
-        gunicorn config.wsgi:application \
+        gunicorn config.asgi:application \
         --workers "${GUNICORN_WORKERS:-4}" \
         --worker-class "${GUNICORN_WORKER_CLASS:-uvicorn.workers.UvicornWorker}" \
         --bind "${GUNICORN_BIND:-0.0.0.0:8080}" \
-        --access-logfile "${GUNICORN_ACCESS_LOG:--}" \
-        --error-logfile "${GUNICORN_ERROR_LOG:--}"
+        --access-logfile "${GUNICORN_ACCESS_LOG:- -}" \
+        --error-logfile "${GUNICORN_ERROR_LOG:- -}"
 else
     echo "Starting without OpenTelemetry instrumentation..."
-    exec gunicorn config.wsgi:application \
+    exec gunicorn config.asgi:application \
         --workers "${GUNICORN_WORKERS:-4}" \
         --worker-class "${GUNICORN_WORKER_CLASS:-uvicorn.workers.UvicornWorker}" \
         --bind "${GUNICORN_BIND:-0.0.0.0:8080}" \
-        --access-logfile "${GUNICORN_ACCESS_LOG:--}" \
-        --error-logfile "${GUNICORN_ERROR_LOG:--}"
+        --access-logfile "${GUNICORN_ACCESS_LOG:- -}" \
+        --error-logfile "${GUNICORN_ERROR_LOG:- -}"
 fi
