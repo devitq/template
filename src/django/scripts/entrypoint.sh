@@ -29,14 +29,14 @@ if [ "$OTEL_ENABLED" = "true" ]; then
         --workers "${GUNICORN_WORKERS:-4}" \
         --worker-class "${GUNICORN_WORKER_CLASS:-uvicorn.workers.UvicornWorker}" \
         --bind "${GUNICORN_BIND:-0.0.0.0:8080}" \
-        --access-logfile "${GUNICORN_ACCESS_LOG:- -}" \
-        --error-logfile "${GUNICORN_ERROR_LOG:- -}"
+        --access-logfile "${GUNICORN_ACCESS_LOG:--}" \
+        --error-logfile "${GUNICORN_ERROR_LOG:--}"
 else
     echo "Starting without OpenTelemetry instrumentation..."
     exec gunicorn config.wsgi:application \
         --workers "${GUNICORN_WORKERS:-4}" \
         --worker-class "${GUNICORN_WORKER_CLASS:-uvicorn.workers.UvicornWorker}" \
         --bind "${GUNICORN_BIND:-0.0.0.0:8080}" \
-        --access-logfile "${GUNICORN_ACCESS_LOG:- -}" \
-        --error-logfile "${GUNICORN_ERROR_LOG:- -}"
+        --access-logfile "${GUNICORN_ACCESS_LOG:--}" \
+        --error-logfile "${GUNICORN_ERROR_LOG:--}"
 fi
