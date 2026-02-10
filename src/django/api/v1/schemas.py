@@ -1,23 +1,30 @@
-from http import HTTPStatus as status
+from datetime import datetime
+from typing import Any
 
 from ninja import Schema
+from pydantic import ConfigDict, Field
 
 
-class BadRequestError(Schema):
-    detail: str = status.BAD_REQUEST.phrase
+class FieldError(Schema):
+    model_config = ConfigDict(populate_by_name=True)
+
+    field: str = Field(..., description="Field name with error (can be nested, e.g. 'location.latitude')")
+    issue: str = Field(..., description="Problem description")
+    rejected_value: Any = Field(None, alias="rejectedValue", description="Value that failed validation")
 
 
-class UnauthorizedError(Schema):
-    detail: str = status.UNAUTHORIZED.phrase
+class ApiError(Schema):
+    model_config = ConfigDict(populate_by_name=True)
+
+    code: str
+    message: str
+    trace_id: str = Field(..., alias="traceId")
+    timestamp: datetime
+    path: str
+    details: dict[str, Any] | None = None
 
 
-class ForbiddenError(Schema):
-    detail: str = status.FORBIDDEN.phrase
+class ValidationError(ApiError):
+    model_config = ConfigDict(populate_by_name=True)
 
-
-class NotFoundError(Schema):
-    detail: str = status.NOT_FOUND.phrase
-
-
-class ConflictError(Schema):
-    detail: str = status.CONFLICT.phrase
+    field_errors: list[FieldError] = Field(..., alias="fieldErrors")

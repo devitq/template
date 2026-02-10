@@ -13,8 +13,8 @@ router = Router(tags=["ping"])
     "",
     response={
         status.OK: schemas.PingOut,
-        status.BAD_REQUEST: global_schemas.BadRequestError,
-        status.NOT_FOUND: global_schemas.NotFoundError,
+        status.BAD_REQUEST: global_schemas.ValidationError,
+        status.NOT_FOUND: global_schemas.ApiError,
     },
 )
 def ping(request: HttpRequest) -> tuple[status, schemas.PingOut]:

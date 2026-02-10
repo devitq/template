@@ -1,5 +1,5 @@
 import uuid
-from typing import Any
+from typing import Any, override
 
 from django.core.exceptions import ValidationError
 from django.db import models
@@ -13,6 +13,7 @@ class BaseModel(models.Model):
     class Meta:
         abstract = True
 
+    @override
     def save(self, *args: Any, **kwargs: Any) -> None:
         self.validate()
 
@@ -20,9 +21,10 @@ class BaseModel(models.Model):
 
     def validate(
         self,
+        *,
         validate_unique: bool = True,
         validate_constraints: bool = True,
-        include: list[models.Field] | None = None,
+        include: list[models.Field[Any, Any]] | None = None,
     ) -> None:
         self.full_clean(
             validate_unique=False,
