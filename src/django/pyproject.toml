@@ -120,7 +120,7 @@ select = [
  "RSE", # flake8-raise
  "RUF", # ruff
  "S", # flake8-bandit
- "SIM", # flake8-simpify
+ "SIM", # flake8-simplify
  "SLF", # flake8-self
  "SLOT", # flake8-slots
  "T100", # flake8-debugger
