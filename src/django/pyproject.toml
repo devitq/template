@@ -103,7 +103,6 @@ select = [
  "FA", # flake8-future-annotations
  "FBT", # flake8-boolean-trap
  "FLY", # pyflint
- "FLY", # pyflint
  "FURB", # refurb
  "G", # flake8-logging-format
  "I", # isort
