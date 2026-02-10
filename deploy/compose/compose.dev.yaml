@@ -1,0 +1,26 @@
+services:
+  service:
+    image: docker.io/cosmtrek/air:latest
+    volumes:
+      - ./:/app/service:Z
+    working_dir: /app/service
+    environment:
+      AIR_WD: /app/service
+
+      SERVER_ADDR: 0.0.0.0:8080
+
+      POSTGRES_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgresql:5432/${POSTGRES_DB}?sslmode=disable
+      POSTGRES_MAX_CONNS: 10
+
+      S3_REGION: us-east-1
+      S3_ENDPOINT: http://s3:9000
+      S3_ACCESS_KEY: access
+      S3_SECRET_KEY: secret
+      S3_BUCKET_NAME: rustfs
+
+      KAFKA_ADDR: kafka:9093
+      KAFKA_READER_GROUP_ID: ${KAFKA_READER_GROUP_ID}
+      KAFKA_TOPIC: ${KAFKA_TOPIC}
+
+      VALKEY_ADDR: valkey:6379
+      VALKEY_PASSWORD: valkey

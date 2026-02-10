@@ -1,0 +1,292 @@
+services:
+  grafana:
+    image: docker.io/grafana/grafana-oss:12.3.2
+    entrypoint:
+      - /etc/grafana/scripts/entrypoint.sh
+    env_file:
+      - path: ./infrastructure/configs/grafana/.env.template
+        required: true
+      - path: ./infrastructure/configs/grafana/.env
+        required: false
+    healthcheck:
+      test: ["CMD", "wget", "-O", "-", "http://localhost:3000/api/health"]
+      interval: 1m30s
+      timeout: 5s
+      start_period: 5s
+      start_interval: 2s
+      retries: 5
+    ports:
+      - name: web
+        target: 3000
+        published: ${GRAFANA_PORT}
+        host_ip: 127.0.0.1
+        protocol: tcp
+        app_protocol: http
+    networks:
+      - default
+    profiles:
+      - observability
+    restart: unless-stopped
+    shm_size: 4mb
+    volumes:
+      - type: bind
+        source: ./infrastructure/configs/grafana/provisioning
+        target: /etc/grafana/provisioning
+        read_only: true
+      - type: bind
+        source: ./infrastructure/configs/grafana/scripts
+        target: /etc/grafana/scripts
+        read_only: true
+
+  otel-collector:
+    image: docker.io/otel/opentelemetry-collector-contrib:latest
+    command:
+      - --config=/etc/otelcol-contrib/config.yaml
+    configs:
+      - source: otel_collector_config
+        target: /etc/otelcol-contrib/config.yaml
+    ports:
+      - name: otlp-grpc
+        target: 4317
+        published: ${OTEL_GRPC_PORT}
+        host_ip: 127.0.0.1
+        protocol: tcp
+      - name: otlp-http
+        target: 4318
+        published: ${OTEL_HTTP_PORT}
+        host_ip: 127.0.0.1
+        protocol: tcp
+    networks:
+      - default
+    profiles:
+      - observability
+    restart: unless-stopped
+    shm_size: 4mb
+
+  grafana-loki:
+    image: docker.io/grafana/loki:3.6.5
+    command:
+      - --config.file=/etc/loki/local-config.yaml
+      - --config.expand-env=true
+    depends_on:
+      s3:
+        restart: false
+        condition: service_healthy
+        required: true
+    configs:
+      - source: grafana_loki_config
+        target: /etc/loki/local-config.yaml
+    env_file:
+      - path: ./infrastructure/configs/s3/.env.template
+        required: true
+      - path: ./infrastructure/configs/s3/.env
+        required: false
+    networks:
+      - default
+    profiles:
+      - observability
+    restart: unless-stopped
+    shm_size: 4mb
+
+  grafana-tempo:
+    image: docker.io/grafana/tempo:2.10.0
+    command:
+      - --config.file=/etc/tempo/tempo-config.yaml
+      - --config.expand-env=true
+    depends_on:
+      s3:
+        restart: false
+        condition: service_healthy
+        required: true
+    configs:
+      - source: grafana_tempo_config
+        target: /etc/tempo/tempo-config.yaml
+    env_file:
+      - path: ./infrastructure/configs/s3/.env.template
+        required: true
+      - path: ./infrastructure/configs/s3/.env
+        required: false
+    networks:
+      - default
+    profiles:
+      - observability
+    restart: unless-stopped
+    shm_size: 4mb
+
+  grafana-pyroscope:
+    image: docker.io/grafana/pyroscope:1.18.0
+    command:
+      - -config.file=/etc/pyroscope/config.yaml
+      - -config.expand-env=true
+    configs:
+      - source: grafana_pyroscope_config
+        target: /etc/pyroscope/config.yaml
+    env_file:
+      - path: ./infrastructure/configs/s3/.env.template
+        required: true
+      - path: ./infrastructure/configs/s3/.env
+        required: false
+    networks:
+      - default
+    profiles:
+      - observability
+    restart: unless-stopped
+    shm_size: 4mb
+
+  vmagent:
+    image: docker.io/victoriametrics/vmagent:v1.135.0
+    command:
+      - -promscrape.config=/etc/vmagent/scrape.yaml
+      - -remoteWrite.url=http://victoriametrics:8428/api/v1/write
+    configs:
+      - source: vmagent_config
+        target: /etc/vmagent/scrape.yaml
+    networks:
+      - default
+    profiles:
+      - observability
+    restart: unless-stopped
+    shm_size: 4mb
+
+  victoriametrics:
+    image: docker.io/victoriametrics/victoria-metrics:v1.134.0
+    command:
+      - -storageDataPath=/var/lib/victoriametrics
+      - -retentionPeriod=30d
+      - -httpListenAddr=:8428
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:8428/-/healthy"]
+      interval: 1m30s
+      timeout: 5s
+      start_period: 5s
+      start_interval: 2s
+      retries: 5
+    ports:
+      - name: web
+        target: 8428
+        published: ${VICTORIAMETRICS_PORT}
+        host_ip: 127.0.0.1
+        protocol: tcp
+        app_protocol: http
+    networks:
+      - default
+    profiles:
+      - observability
+    restart: unless-stopped
+    shm_size: 4mb
+    volumes:
+      - type: volume
+        source: victoriametrics_data
+        target: /var/lib/victoriametrics
+        read_only: false
+
+  redis-exporter:
+    image: docker.io/oliver006/redis_exporter:v1.80.2-alpine
+    depends_on:
+      valkey:
+        restart: false
+        condition: service_healthy
+        required: true
+    env_file:
+      - path: ./infrastructure/configs/redis-exporter/.env.template
+        required: true
+      - path: ./infrastructure/configs/redis-exporter/.env
+        required: false
+    healthcheck:
+      test: ["CMD", "wget", "-O", "-", "http://localhost:9121/metrics"]
+      interval: 1m30s
+      timeout: 5s
+      start_period: 5s
+      start_interval: 2s
+      retries: 5
+    networks:
+      - default
+    profiles:
+      - observability
+    restart: unless-stopped
+    shm_size: 4mb
+
+  postgres-exporter:
+    image: quay.io/prometheuscommunity/postgres-exporter:latest
+    depends_on:
+      postgresql:
+        restart: false
+        condition: service_healthy
+        required: true
+    env_file:
+      - path: ./infrastructure/configs/postgres-exporter/.env.template
+        required: true
+      - path: ./infrastructure/configs/postgres-exporter/.env
+        required: false
+    healthcheck:
+      test: ["CMD", "wget", "-O", "-", "http://localhost:9187/metrics"]
+      interval: 1m30s
+      timeout: 5s
+      start_period: 5s
+      start_interval: 2s
+      retries: 5
+    networks:
+      - default
+    profiles:
+      - observability
+    restart: unless-stopped
+    shm_size: 4mb
+
+  pgadmin:
+    image: docker.io/dpage/pgadmin4:9
+    configs:
+      - source: pgadmin_servers_config
+        target: /pgadmin4/servers.json
+    depends_on:
+      postgresql:
+        restart: false
+        condition: service_healthy
+        required: true
+    env_file:
+      - path: ./infrastructure/configs/pgadmin/.env.template
+        required: true
+      - path: ./infrastructure/configs/pgadmin/.env
+        required: false
+    healthcheck:
+      test: ["CMD", "wget", "-O", "-", "http://localhost:80/misc/ping"]
+      interval: 30s
+      timeout: 5s
+      start_period: 5s
+      start_interval: 2s
+      retries: 5
+    ports:
+      - name: web
+        target: 80
+        published: ${PGADMIN_PORT}
+        host_ip: 127.0.0.1
+        protocol: tcp
+        app_protocol: http
+    networks:
+      - default
+    profiles:
+      - observability
+    restart: unless-stopped
+    shm_size: 4mb
+    volumes:
+      - type: volume
+        source: pgadmin_data
+        target: /var/lib/pgadmin
+        read_only: false
+
+volumes:
+  victoriametrics_data:
+  pgadmin_data:
+
+configs:
+  otel_collector_config:
+    file: ./infrastructure/configs/otel-collector/config.yaml
+  grafana_loki_config:
+    file: ./infrastructure/configs/grafana-loki/loki.yaml
+  grafana_tempo_config:
+    file: ./infrastructure/configs/grafana-tempo/tempo.yaml
+  grafana_pyroscope_config:
+    file: ./infrastructure/configs/grafana-pyroscope/config.yaml
+  vmagent_config:
+    file: ./infrastructure/configs/victoriametrics/vmagent.yaml
+  pgadmin_servers_config:
+    file: ./infrastructure/configs/pgadmin/servers.json

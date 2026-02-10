@@ -1,0 +1,127 @@
+#!/usr/bin/env just --justfile
+
+arch := `uname -m`
+os := `uname -s | tr "[:upper:]" "[:lower:]"`
+time := datetime('%Y-%m-%dT%H:%M:%S%.f%:z')
+version := 'undefined'
+image := 'antifraud'
+containerfile := 'build/package/oci/Containerfile'
+
+cgo_enabled := '0'
+gobuild := f'CGO_ENABLED={{ cgo_enabled }} \
+GOOS={{ os }} \
+GOARCH={{ arch }} \
+go build -installsuffix cgo -trimpath \
+-ldflags "-extldflags "-static" -s -w -X main.BuildTime={{ time }} -X main.Version={{ version }}" \
+'
+
+[group('help')]
+[private]
+default:
+    @ just --list --list-heading $'justfile manual page:\n'
+
+# show help
+[group('help')]
+help: default
+
+[group('deps')]
+install:
+    @ go mod tidy
+    @ go mod download
+
+alias i := install
+
+[group('deps')]
+update:
+	@ go get -u ./...
+
+# builds service binary
+[group('build')]
+build-service:
+    @ {{ gobuild }} -o ./bin/service ./cmd/service
+    @ chmod +x ./bin/service
+
+# build service using buildx
+[group('build')]
+build-service-buildx:
+    @ docker buildx build -t {{ image }}:{{ version }} -t {{ image }}:latest -f {{ containerfile }} .
+
+# runs service
+[group('run')]
+run: build-service
+    @ ./bin/service
+
+style:
+    just format
+    just lint
+    just lint-containerfile
+
+check:
+    just style
+    just test
+    just test-coverage
+
+golangci-config-path := '.golangci.yaml'
+
+# lints codebase using golangci-lint
+[group('lint')]
+lint:
+    @ golangci-lint run -c {{ golangci-config-path }} ./...
+
+# lints and fixes codebase using golangci-lint
+[group('lint')]
+fix:
+    @ golangci-lint run -c {{ golangci-config-path }} --fix ./...
+
+# formats codebase using golangci-lint
+[group('lint')]
+format:
+    @ golangci-lint fmt -c {{ golangci-config-path }} ./...
+
+alias fmt := format
+
+# lints containerfile using hadolint and dockadvisor
+[group('lint')]
+lint-containerfile:
+    @ echo "Linting using hadolint..."
+    @ docker run --rm -i ghcr.io/hadolint/hadolint < {{ containerfile }} || exit 0
+    @ echo "Linting using dockadvisor..."
+    @ go tool dockadvisor -f {{ containerfile }} || exit 0
+
+# run golang tests
+[group('test')]
+test:
+    @ go test -v ./...
+
+# run golang tests with coverage report
+[group('test')]
+test-coverage:
+    @ go test -v -coverprofile=coverage.out ./...
+    @ go tool cover -html=coverage.out
+
+# cleans bin directory
+[group('clean')]
+clean:
+    @ rm -rf ./bin/*
+    @ echo 'Cleaned up ./bin directory'
+
+# generates code using sqlc
+[group('generate')]
+generate-sqlc:
+    @ go tool sqlc generate -f internal/db/sqlc/sqlc.yaml
+
+alias g := generate-sqlc
+
+# generates swagger files using swaggo  
+[group('generate')]
+generate-swagger:
+    @ go tool swag init -g ./cmd/service/main.go -o ./api/openapi
+
+alias s := generate-swagger
+
+# generates migrations using goose
+[group('generate')]
+generate-migrations:
+    @ go tool goose -dir internal/db/migrations create -s {migration_name} sql
+
+alias m := generate-migrations

@@ -1,0 +1,28 @@
+services:
+  telegram-bot:
+    build:
+      context: ./src/telegram_bot
+      dockerfile: Containerfile
+      tags:
+        - template-telegram_bot:latest
+      pull: true
+    depends_on:
+      backend:
+        restart: false
+        condition: service_healthy
+        required: true
+      valkey:
+        restart: false
+        condition: service_healthy
+        required: true
+    env_file:
+      - path: ./infrastructure/configs/telegram_bot/.env.template
+        required: true
+      - path: ./infrastructure/configs/telegram_bot/.env
+        required: false
+    networks:
+      - default
+    profiles:
+      - telegram_bot
+    restart: unless-stopped
+    shm_size: 4mb

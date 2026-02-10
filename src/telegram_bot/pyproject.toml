@@ -1,0 +1,113 @@
+[project]
+dependencies = [
+ "aiogram-dialog>=2.4.0,<3.0.0",
+ "aiogram>=3.17.0,<4.0.0",
+ "cachetools>=5.0.0,<6.0.0",
+ "httpx>=0.28.0,<0.29.0",
+ "python-dotenv>=1.1.0,<2.0.0",
+ "redis>=6.2.0,<7.0.0",
+]
+name = "adnova-telegram_bot"
+readme = "README.md"
+requires-python = ">=3.10,<3.14"
+version = "0.1.0"
+
+[dependency-groups]
+dev = ["ruff"]
+
+[tool.ruff]
+builtins = []
+cache-dir = ".ruff_cache"
+exclude = [
+ ".bzr",
+ ".direnv",
+ ".eggs",
+ ".git",
+ ".git-rewrite",
+ ".hg",
+ ".mypy_cache",
+ ".nox",
+ ".pants.d",
+ ".pytype",
+ ".ruff_cache",
+ ".svn",
+ ".tox",
+ ".venv",
+ "__pypackages__",
+ "_build",
+ "buck-out",
+ "dist",
+ "migrations",
+ "node_modules",
+ "venv",
+]
+extend-exclude = []
+extend-include = []
+fix = false
+fix-only = false
+force-exclude = true
+include = ["**/pyproject.toml", "*.ipynb", "*.py", "*.pyi"]
+indent-width = 4
+line-length = 79
+namespace-packages = []
+output-format = "full"
+preview = false
+required-version = ">=0.8.4"
+respect-gitignore = true
+show-fixes = true
+src = [".", "src"]
+target-version = "py310"
+unsafe-fixes = false
+
+[tool.ruff.analyze]
+detect-string-imports = true
+direction             = "Dependencies"
+exclude               = []
+include-dependencies  = {}
+preview               = false
+
+[tool.ruff.format]
+docstring-code-format      = true
+docstring-code-line-length = 79
+exclude                    = []
+indent-style               = "space"
+line-ending                = "lf"
+preview                    = false
+quote-style                = "double"
+skip-magic-trailing-comma  = false
+
+[tool.ruff.lint]
+allowed-confusables = ["ℹ"]
+dummy-variable-rgx = "^(_+|(_+[a-zA-Z0-9_]*[a-zA-Z0-9]+?))$"
+exclude = ["tests.py"]
+explicit-preview-rules = false
+extend-fixable = []
+extend-per-file-ignores = {}
+extend-safe-fixes = []
+extend-select = []
+extend-unsafe-fixes = []
+external = []
+fixable = ["ALL"]
+ignore = [
+ "ANN401",
+ "ARG",
+ "COM812",
+ "D",
+ "DJ001",
+ "FBT001",
+ "FBT002",
+ "N813",
+ "PLR2004",
+ "RUF001",
+ "TC002",
+]
+logger-objects = []
+per-file-ignores = {}
+preview = false
+select = ["ALL"]
+task-tags = ["FIXME", "HACK", "TODO", "WORKOUT"]
+typing-modules = []
+unfixable = []
+
+[tool.ruff.lint.pylint]
+max-args = 6

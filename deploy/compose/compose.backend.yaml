@@ -1,0 +1,146 @@
+services:
+  backend:
+    build:
+      context: ./src/backend
+      dockerfile: Containerfile
+      tags:
+        - template-backend:latest
+      pull: true
+    depends_on:
+      backend-initdb:
+        restart: false
+        condition: service_completed_successfully
+        required: true
+      postgres:
+        restart: false
+        condition: service_healthy
+        required: true
+      redis:
+        restart: false
+        condition: service_healthy
+        required: true
+    env_file:
+      - path: ./infrastructure/configs/backend/.env.template
+        required: true
+      - path: ./infrastructure/configs/backend/.env
+        required: false
+    ports:
+      - name: web
+        target: 8080
+        published: ${DJANGO_PORT}
+        host_ip: 127.0.0.1
+        protocol: tcp
+        app_protocol: http
+    networks:
+      - default
+    restart: unless-stopped
+    shm_size: 4mb
+
+  backend-initdb:
+    build:
+      context: ./src/backend
+      dockerfile: Containerfile
+      tags:
+        - template-backend:latest
+      pull: true
+    command: ./scripts/initdb
+    depends_on:
+      postgres:
+        restart: false
+        condition: service_healthy
+        required: true
+      redis:
+        restart: false
+        condition: service_healthy
+        required: true
+    env_file:
+      - path: ./infrastructure/configs/backend/.env.template
+        required: true
+      - path: ./infrastructure/configs/backend/.env
+        required: false
+    networks:
+      - default
+    restart: no
+    shm_size: 4mb
+
+  backend-staticfiles:
+    build:
+      context: ./src/backend
+      dockerfile: Containerfile.staticfiles
+      tags:
+        - template-backend-staticfiles:latest
+      pull: true
+    env_file:
+      - path: ./infrastructure/backend/.env.template
+        required: true
+      - path: ./infrastructure/backend/.env
+        required: false
+    healthcheck:
+      test: ["CMD-SHELL", "nginx", "-t", "||", "exit 1"]
+      interval: 1m30s
+      timeout: 5s
+      start_period: 5s
+      start_interval: 2s
+      retries: 5
+    ports:
+      - name: web
+        target: 80
+        published: ${DJANGO_STATICFILES_PORT}
+        host_ip: 127.0.0.1
+        protocol: tcp
+        app_protocol: http
+    networks:
+      - default
+    restart: unless-stopped
+    shm_size: 4mb
+
+  backend-celery-worker:
+    build:
+      context: ./src/backend
+      dockerfile: Containerfile
+      tags:
+        - template-backend:latest
+      pull: true
+    command: celery -A config worker -l INFO
+    depends_on:
+      redis:
+        restart: false
+        condition: service_healthy
+        required: true
+    env_file:
+      - path: ./infrastructure/configs/backend/.env.template
+        required: true
+      - path: ./infrastructure/configs/backend/.env
+        required: false
+    healthcheck:
+      test: ["CMD", "celery", "-A", "config", "inspect", "ping"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+      start_interval: 2s
+    networks:
+      - default
+    restart: unless-stopped
+    shm_size: 4mb
+
+  celery-exporter:
+    image: docker.io/danihodovic/celery-exporter:latest
+    command:
+      - --retry-interval=5
+    depends_on:
+      redis:
+        restart: false
+        condition: service_healthy
+        required: true
+    env_file:
+      - path: ./infrastructure/configs/celery-exporter/.env.template
+        required: true
+      - path: ./infrastructure/configs/celery-exporter/.env
+        required: false
+    networks:
+      - default
+    profiles:
+      - observability
+    restart: unless-stopped
+    shm_size: 4mb

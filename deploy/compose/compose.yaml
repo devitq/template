@@ -1,0 +1,141 @@
+services:
+  postgresql:
+    image: docker.io/postgres:18-alpine
+    configs:
+      - source: postgresql_config
+        target: /etc/postgresql/postgresql.conf
+    env_file:
+      - path: ./infrastructure/configs/postgresql/.env.template
+        required: true
+      - path: ./infrastructure/configs/postgresql/.env
+        required: false
+    healthcheck:
+      test: ["CMD", "sh", "-c", "pg_isready -U postgres -d postgres"]
+      interval: 1m30s
+      timeout: 5s
+      start_period: 5s
+      start_interval: 2s
+      retries: 5
+    networks:
+      - default
+    oom_kill_disable: true
+    restart: unless-stopped
+    shm_size: 128mb
+    volumes:
+      - type: volume
+        source: postgresql_data
+        target: /var/lib/postgresql/data
+
+  valkey:
+    image: docker.io/valkey/valkey:9-alpine
+    command: valkey-server /usr/local/etc/valkey/valkey.conf
+    configs:
+      - source: valkey_config
+        target: /usr/local/etc/valkey/valkey.conf
+    env_file:
+      - path: ./infrastructure/configs/valkey/.env.template
+        required: true
+      - path: ./infrastructure/configs/valkey/.env
+        required: false
+    healthcheck:
+      test:
+        ["CMD", "sh", "-c", "valkey-cli -p 6379 --pass valkey ping | grep PONG"]
+      interval: 10s
+      timeout: 2s
+      start_period: 5s
+      start_interval: 2s
+      retries: 3
+    networks:
+      - default
+    restart: unless-stopped
+    shm_size: 4mb
+    volumes:
+      - type: volume
+        source: valkey_data
+        target: /data
+        read_only: false
+
+  s3:
+    image: docker.io/rustfs/rustfs:1.0.0-alpha.82
+    env_file:
+      - path: ./infrastructure/configs/rustfs/.env.template
+        required: true
+      - path: ./infrastructure/configs/rustfs/.env
+        required: false
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "sh",
+          "-c",
+          "curl -f http://localhost:9000/health && curl -f http://localhost:9001/rustfs/console/health",
+        ]
+      interval: 30s
+      timeout: 5s
+      start_period: 5s
+      start_interval: 5s
+      retries: 3
+    ports:
+      - name: api
+        target: 9000
+        published: ${RUSTFS_API_PORT}
+        host_ip: 127.0.0.1
+        protocol: tcp
+        app_protocol: http
+      - name: console
+        target: 9001
+        published: ${RUSTFS_CONSOLE_PORT}
+        host_ip: 127.0.0.1
+        protocol: tcp
+        app_protocol: http
+    networks:
+      - default
+    restart: unless-stopped
+    shm_size: 4mb
+    volumes:
+      - type: volume
+        source: rustfs_data
+        target: /data
+
+  s3-init:
+    image: docker.io/minio/mc:latest
+    entrypoint: >
+      sh -c "until mc alias set default $$S3_URL $$S3_ACCESS_KEY $$S3_SECRET_KEY; do sleep 1; done &&
+        mc mb default/loki;
+        mc mb default/tempo;
+        mc mb default/pyroscope;
+        mc policy set public default/loki; true"
+    depends_on:
+      s3:
+        restart: false
+        condition: service_healthy
+        required: true
+    env_file:
+      - path: ./infrastructure/configs/s3/.env.template
+        required: true
+      - path: ./infrastructure/configs/s3/.env
+        required: false
+    networks:
+      - default
+    restart: no
+    shm_size: 4mb
+
+networks:
+  default:
+    driver: bridge
+    name: $COMPOSE_PROJECT_NAME
+    attachable: false
+    enable_ipv4: true
+    enable_ipv6: true
+    internal: false
+
+volumes:
+  postgresql_data:
+  valkey_data:
+  rustfs_data:
+
+configs:
+  postgresql_config:
+    file: ./infrastructure/configs/postgresql/postgresql.conf
+  valkey_config:
+    file: ./infrastructure/configs/valkey/valkey.conf

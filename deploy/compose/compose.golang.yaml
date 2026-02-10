@@ -1,0 +1,37 @@
+services:
+  service:
+    build:
+      context: ./src/golang
+      dockerfile: ./src/golang/build/package/oci/Containerfile
+      tags:
+        - template-backend:latest
+      pull: true
+    depends_on:
+      postgresql:
+        restart: false
+        condition: service_healthy
+        required: true
+      valkey:
+        restart: false
+        condition: service_healthy
+        required: false
+      s3:
+        restart: false
+        condition: service_healthy
+        required: false
+    env_file:
+      - path: ./infrastructure/configs/golang/.env.template
+        required: true
+      - path: ./infrastructure/configs/golang/.env
+        required: false
+    networks:
+      - default
+    ports:
+      - name: web
+        target: 8080
+        published: 14600
+        host_ip: 127.0.0.1
+        protocol: tcp
+        app_protocol: http
+    restart: unless-stopped
+    shm_size: 4mb
