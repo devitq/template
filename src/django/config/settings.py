@@ -4,7 +4,7 @@ import contextlib
 import logging
 from collections.abc import Callable
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 import django_stubs_ext
 import environ
@@ -83,7 +83,12 @@ DB_URI["ENGINE"] = DB_URI["ENGINE"].replace(
     "django.db.backends", "django_prometheus.db.backends"
 )
 
-DATABASES = {"default": {**DB_URI, "CONN_MAX_AGE": 50}}
+DATABASES = {
+    "default": {
+        **DB_URI,
+        "CONN_MAX_AGE": env.int("DJANGO_CONN_MAX_AGE", default=300),
+    }
+}
 
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 
@@ -135,41 +140,27 @@ STATICFILES_FINDERS = [
 
 FILE_UPLOAD_MAX_MEMORY_SIZE = 2621440
 
-# Minio
+# S3 (django-storages)
 
-MINIO_STORAGE_ENDPOINT = env("MINIO_ENDPOINT", default=None)
+AWS_ACCESS_KEY_ID = env("AWS_ACCESS_KEY_ID", default=None)
 
-MINIO_STORAGE_ACCESS_KEY = env("MINIO_ACCESS_KEY", default=None)
+AWS_SECRET_ACCESS_KEY = env("AWS_SECRET_ACCESS_KEY", default=None)
 
-MINIO_STORAGE_SECRET_KEY = env("MINIO_SECRET_KEY", default=None)
+AWS_STORAGE_BUCKET_NAME = env("AWS_STORAGE_BUCKET_NAME", default=None)
 
-MINIO_STORAGE_USE_HTTPS = env("MINIO_USE_HTTPS", default=False)
+AWS_S3_ENDPOINT_URL = env("AWS_S3_ENDPOINT_URL", default=None)
 
-MINIO_STORAGE_MEDIA_BUCKET_NAME = env(
-    "MINIO_MEDIA_BUCKET_NAME", default="template-media"
-)
+AWS_S3_REGION_NAME = env("AWS_S3_REGION_NAME", default=None)
 
-MINIO_STORAGE_AUTO_CREATE_MEDIA_BUCKET = True
+AWS_S3_USE_SSL = env.bool("AWS_S3_USE_SSL", default=True)
 
-MINIO_STORAGE_AUTO_CREATE_MEDIA_POLICY = "GET_ONLY"
+AWS_S3_VERIFY = env.bool("AWS_S3_VERIFY", default=True)
 
-MINIO_DEFAULT_CUSTOM_ENDPOINT_URL = (
-    "https://"
-    if MINIO_STORAGE_USE_HTTPS
-    else "http://" + str(MINIO_STORAGE_ENDPOINT)
-)
-
-MINIO_STORAGE_MEDIA_URL = (
-    env("MINIO_CUSTOM_ENDPOINT_URL", default=MINIO_DEFAULT_CUSTOM_ENDPOINT_URL)
-    + "/"
-    f"{MINIO_STORAGE_MEDIA_BUCKET_NAME}"
-)
-
-MINIO_STORAGE_DEFAULT_ACL = "public-read"
+AWS_S3_FILE_OVERWRITE = False
 
 STORAGES = {
     "default": {
-        "BACKEND": "minio_storage.storage.MinioMediaStorage",
+        "BACKEND": "storages.backends.s3.S3Storage",
     },
     "staticfiles": {
         "BACKEND": "django.contrib.staticfiles.storage.StaticFilesStorage",
@@ -232,7 +223,7 @@ DECIMAL_SEPARATOR = "."
 
 FIRST_DAY_OF_WEEK = 1
 
-FORMAT_MODULE_PATH = None
+FORMAT_MODULE_PATH: str | None = None
 
 LANGUAGE_CODE = env("DJANGO_LANGUAGE_CODE", default="en-us")
 
@@ -271,15 +262,15 @@ YEAR_MONTH_FORMAT = "F Y"
 
 # HTTP
 
-DATA_UPLOAD_MAX_MEMORY_SIZE = None
+DATA_UPLOAD_MAX_MEMORY_SIZE: int | None = None
 
-DATA_UPLOAD_MAX_NUMBER_FIELDS = None
+DATA_UPLOAD_MAX_NUMBER_FIELDS: int | None = None
 
-DATA_UPLOAD_MAX_NUMBER_FILES = None
+DATA_UPLOAD_MAX_NUMBER_FILES: int | None = None
 
 DEFAULT_CHARSET = "utf-8"
 
-FORCE_SCRIPT_NAME = None
+FORCE_SCRIPT_NAME: str | None = None
 
 INTERNAL_IPS = env.list(
     "DJANGO_INTERNAL_IPS",
@@ -305,6 +296,8 @@ USE_X_FORWARDED_HOST = False
 USE_X_FORWARDED_PORT = False
 
 WSGI_APPLICATION = "config.wsgi.application"
+
+AUTH_USER_MODEL = "users.User"
 
 
 # Logging
@@ -424,7 +417,7 @@ LOGGING_CONFIG = "logging.config.dictConfig"
 
 # Models
 
-ABSOLUTE_URL_OVERRIDES: dict[str, Callable] = {}
+ABSOLUTE_URL_OVERRIDES: dict[str, Callable[..., Any]] = {}
 
 FIXTURE_DIRS: list[str] = []
 
@@ -450,10 +443,11 @@ INSTALLED_APPS = [
     "django_guid",
     "django_prometheus",
     "ninja",
-    "minio_storage",
+    "storages",
     "silk",
     # Internal apps
     "apps.core",
+    "apps.users",
     # API v1 apps
     "api.v1.ping",
 ]
@@ -475,7 +469,7 @@ DJANGO_GUID = {
 
 LANGUAGE_COOKIE_AGE = 31449600
 
-LANGUAGE_COOKIE_DOMAIN = None
+LANGUAGE_COOKIE_DOMAIN: str | None = None
 
 LANGUAGE_COOKIE_HTTPONLY = False
 
@@ -487,11 +481,11 @@ LANGUAGE_COOKIE_SAMESITE = "Lax"
 
 LANGUAGE_COOKIE_SECURE = False
 
-SECURE_PROXY_SSL_HEADER = None
+SECURE_PROXY_SSL_HEADER: tuple[str, str] | None = None
 
 CSRF_COOKIE_AGE = 31449600
 
-CSRF_COOKIE_DOMAIN = None
+CSRF_COOKIE_DOMAIN: str | None = None
 
 CSRF_COOKIE_HTTPONLY = False
 
@@ -532,7 +526,7 @@ SESSION_CACHE_ALIAS = "default"
 
 SESSION_COOKIE_AGE = 1209600
 
-SESSION_COOKIE_DOMAIN = None
+SESSION_COOKIE_DOMAIN: str | None = None
 
 SESSION_COOKIE_HTTPONLY = True
 
@@ -548,7 +542,7 @@ SESSION_ENGINE = "django.contrib.sessions.backends.db"
 
 SESSION_EXPIRE_AT_BROWSER_CLOSE = False
 
-SESSION_FILE_PATH = None
+SESSION_FILE_PATH: str | None = None
 
 SESSION_SAVE_EVERY_REQUEST = False
 
@@ -576,6 +570,18 @@ TEMPLATES = [
         },
     },
 ]
+
+if not DEBUG:
+    TEMPLATES[0]["OPTIONS"]["loaders"] = [  # type: ignore[index]
+        (
+            "django.template.loaders.cached.Loader",
+            [
+                "django.template.loaders.filesystem.Loader",
+                "django.template.loaders.app_directories.Loader",
+            ],
+        ),
+    ]
+    TEMPLATES[0]["APP_DIRS"] = False
 
 
 # Testing
@@ -661,4 +667,4 @@ SILKY_INTERCEPT_PERCENT = 25
 
 SILKY_META = True
 
-SILKY_DYNAMIC_PROFILING = []
+SILKY_DYNAMIC_PROFILING: list[Any] = []
