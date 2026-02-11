@@ -39,6 +39,7 @@ type kafka struct {
 
 type valkey struct {
 	Addr     string `env:"VALKEY_ADDR"`
+	Username string `env:"VALKEY_USERNAME"`
 	Password string `env:"VALKEY_PASSWORD"`
 }
 
@@ -46,6 +47,10 @@ type otel struct {
 	Enabled      bool   `env:"OTEL_ENABLED"       env-default:"false"`
 	ServiceName  string `env:"OTEL_SERVICE_NAME"  env-default:"antifraud"`
 	CollectorURL string `env:"OTEL_COLLECTOR_URL" env-default:"localhost:4317"`
+	UseTLS       bool   `env:"OTEL_USE_TLS"       env-default:"false"`
+	CertFile     string `env:"OTEL_CERT_FILE"`
+
+	MetricsExportInterval int `env:"OTEL_METRICS_EXPORT_INTERVAL" env-default:"30"` // in seconds
 }
 
 func New() (*Config, error) {

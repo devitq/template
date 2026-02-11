@@ -14,14 +14,31 @@ type PostgresConfig struct {
 	MinIdleConns int32
 }
 
+func (c PostgresConfig) Validate() error {
+	if c.MaxConns <= 0 {
+		return fmt.Errorf("MaxConns must be greater than 0")
+	}
+	if c.MinIdleConns < 0 {
+		return fmt.Errorf("MinIdleConns cannot be negative")
+	}
+	if c.MinIdleConns > c.MaxConns {
+		return fmt.Errorf("MinIdleConns cannot be greater than MaxConns")
+	}
+	return nil
+}
+
 func NewPostgresPool(ctx context.Context, cfg PostgresConfig) (*pgxpool.Pool, error) {
+	if err := cfg.Validate(); err != nil {
+		return nil, fmt.Errorf("invalid postgres config: %w", err)
+	}
+
 	poolCfg, err := pgxpool.ParseConfig(cfg.URL)
 	if err != nil {
 		return nil, fmt.Errorf("failed to parse postgres url: %w", err)
 	}
 
 	poolCfg.MaxConns = cfg.MaxConns
-	poolCfg.MinIdleConns = cfg.MinIdleConns
+	poolCfg.MinConns = cfg.MinIdleConns
 	poolCfg.HealthCheckPeriod = 1 * time.Minute
 
 	pool, err := pgxpool.NewWithConfig(ctx, poolCfg)

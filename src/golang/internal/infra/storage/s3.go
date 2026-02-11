@@ -8,6 +8,7 @@ import (
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/credentials"
 	"github.com/aws/aws-sdk-go-v2/service/s3"
+	"github.com/aws/aws-sdk-go-v2/service/s3/types"
 	"github.com/aws/smithy-go"
 )
 
@@ -21,8 +22,7 @@ type S3Config struct {
 
 func NewS3Client(ctx context.Context, cfg S3Config) (*s3.Client, error) {
 	awsCfg := aws.Config{
-		Region:       cfg.Region,
-		BaseEndpoint: aws.String(cfg.Endpoint),
+		Region: cfg.Region,
 		Credentials: aws.NewCredentialsCache(
 			credentials.NewStaticCredentialsProvider(
 				cfg.AccessKey,
@@ -31,13 +31,24 @@ func NewS3Client(ctx context.Context, cfg S3Config) (*s3.Client, error) {
 		),
 	}
 
+	if cfg.Endpoint != "" {
+		awsCfg.BaseEndpoint = aws.String(cfg.Endpoint)
+	}
+
 	client := s3.NewFromConfig(awsCfg, func(o *s3.Options) {
 		o.UsePathStyle = true
 	})
 
-	_, err := client.CreateBucket(ctx, &s3.CreateBucketInput{
+	input := &s3.CreateBucketInput{
 		Bucket: aws.String(cfg.BucketName),
-	})
+	}
+	if cfg.Region != "us-east-1" {
+		input.CreateBucketConfiguration = &types.CreateBucketConfiguration{
+			LocationConstraint: types.BucketLocationConstraint(cfg.Region),
+		}
+	}
+
+	_, err := client.CreateBucket(ctx, input)
 	if err != nil {
 		var apiError smithy.APIError
 		if errors.As(err, &apiError) && apiError.ErrorCode() == "BucketAlreadyOwnedByYou" {

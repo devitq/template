@@ -2,6 +2,7 @@ package user
 
 import (
 	"context"
+	"log/slog"
 
 	"antifraud/internal/domain/models"
 	"github.com/gofiber/fiber/v2"
@@ -18,12 +19,14 @@ type validator interface {
 type handler struct {
 	service   service
 	validator validator
+	logger    *slog.Logger
 }
 
-func New(s service, v validator) *handler {
+func New(s service, v validator, l *slog.Logger) *handler {
 	return &handler{
 		service:   s,
 		validator: v,
+		logger:    l,
 	}
 }
 

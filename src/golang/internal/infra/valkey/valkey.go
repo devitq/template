@@ -8,12 +8,14 @@ import (
 
 type ValkeyConfig struct {
 	Addr     string
+	Username string
 	Password string
 }
 
 func NewValkeyClient(cfg ValkeyConfig) (valkey.Client, error) {
 	client, err := valkey.NewClient(valkey.ClientOption{
 		InitAddress: []string{cfg.Addr},
+		Username:    cfg.Username,
 		Password:    cfg.Password,
 	})
 	if err != nil {

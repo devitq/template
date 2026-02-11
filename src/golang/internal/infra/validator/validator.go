@@ -37,8 +37,8 @@ func (v *Validator) Validate(s any) error {
 		return nil
 	}
 
-	var fieldErrors []response.FieldError
 	if errs, ok := err.(validator.ValidationErrors); ok {
+		var fieldErrors []response.FieldError
 		for _, e := range errs {
 			fieldErrors = append(fieldErrors, response.FieldError{
 				Field:         e.Field(),
@@ -46,11 +46,12 @@ func (v *Validator) Validate(s any) error {
 				RejectedValue: e.Value(),
 			})
 		}
+		return &middleware.ValidationErrors{
+			FieldErrors: fieldErrors,
+		}
 	}
 
-	return &middleware.ValidationErrors{
-		FieldErrors: fieldErrors,
-	}
+	return err
 }
 
 func msgForTag(tag string, param string) string {

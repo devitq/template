@@ -2,6 +2,8 @@ package middleware
 
 import (
 	"errors"
+	"net/http"
+	"strings"
 	"time"
 
 	"antifraud/internal/adapter/handler/response"
@@ -40,22 +42,29 @@ func ErrorHandler(c *fiber.Ctx, err error) error {
 	if errors.As(err, &fiberErr) {
 		code = fiberErr.Code
 		message = fiberErr.Message
+		errorCode = strings.ToUpper(strings.ReplaceAll(http.StatusText(code), " ", "_"))
 	}
 
 	var appErr *AppError
 	var valErrs *ValidationErrors
 
 	// Try to get traceId from locals (set by some middleware) or OTEL or generate new one
-	traceId := uuid.New().String()
+	var traceId string
 	if traceIdRaw := c.Locals("traceId"); traceIdRaw != nil {
 		if tid, ok := traceIdRaw.(string); ok {
 			traceId = tid
 		}
-	} else {
+	}
+
+	if traceId == "" {
 		span := trace.SpanFromContext(c.UserContext())
 		if span.SpanContext().IsValid() {
 			traceId = span.SpanContext().TraceID().String()
 		}
+	}
+
+	if traceId == "" {
+		traceId = uuid.New().String()
 	}
 
 	if errors.As(err, &valErrs) {

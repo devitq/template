@@ -52,7 +52,13 @@ func New(ctx context.Context, cfg *config.Config, l *slog.Logger) (*App, error) 
 	}
 
 	if cfg.Otel.Enabled {
-		shutdown, err := observability.SetupOTEL(ctx, cfg.Otel.ServiceName, cfg.Otel.CollectorURL)
+		shutdown, err := observability.SetupOTEL(ctx, observability.OTELConfig{
+			ServiceName:           cfg.Otel.ServiceName,
+			CollectorURL:          cfg.Otel.CollectorURL,
+			UseTLS:                cfg.Otel.UseTLS,
+			CertFile:              cfg.Otel.CertFile,
+			MetricsExportInterval: time.Duration(cfg.Otel.MetricsExportInterval) * time.Second,
+		})
 		if err != nil {
 			return nil, fmt.Errorf("failed to setup otel: %w", err)
 		}
@@ -72,7 +78,7 @@ func New(ctx context.Context, cfg *config.Config, l *slog.Logger) (*App, error) 
 	queries := sqlcstorage.New(a.dbPool)
 	userRepo := userrepo.New(queries)
 	userService := userservice.New(userRepo)
-	userHandler := userhandler.New(userService, v)
+	userHandler := userhandler.New(userService, v, a.l)
 
 	a.initFiber()
 
@@ -137,7 +143,9 @@ func (a *App) initDB(ctx context.Context) error {
 }
 
 func (a *App) migrateDB() error {
-	return database.Migrate(sql.OpenDB(stdlib.GetConnector(*a.dbPool.Config().ConnConfig)))
+	tempDB := sql.OpenDB(stdlib.GetConnector(*a.dbPool.Config().ConnConfig))
+	defer tempDB.Close()
+	return database.Migrate(tempDB)
 }
 
 func (a *App) initFiber() {
@@ -219,7 +227,9 @@ func (a *App) initS3(ctx context.Context) error {
 }
 
 func (a *App) initKafkaWriter() {
-	a.kafkaWriter = kafka.NewKafkaWriter(a.cfg.Kafka.Addr)
+	a.kafkaWriter = kafka.NewKafkaWriter(kafka.KafkaConfig{
+		Addr: a.cfg.Kafka.Addr,
+	})
 }
 
 func (a *App) initKafkaReader() {
@@ -233,6 +243,7 @@ func (a *App) initKafkaReader() {
 func (a *App) initValkey() error {
 	client, err := valkey.NewValkeyClient(valkey.ValkeyConfig{
 		Addr:     a.cfg.Valkey.Addr,
+		Username: a.cfg.Valkey.Username,
 		Password: a.cfg.Valkey.Password,
 	})
 	if err != nil {

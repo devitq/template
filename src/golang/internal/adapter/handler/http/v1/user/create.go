@@ -1,6 +1,8 @@
 package user
 
 import (
+	"log/slog"
+
 	"antifraud/internal/adapter/handler/http/dto"
 	_ "antifraud/internal/adapter/handler/response"
 	"antifraud/internal/domain/models"
@@ -23,7 +25,8 @@ import (
 func (h *handler) Create(c *fiber.Ctx) error {
 	var body dto.UserCreateRequest
 	if err := c.BodyParser(&body); err != nil {
-		return fiber.NewError(fiber.StatusBadRequest, err.Error())
+		h.logger.Error("failed to parse body", slog.Any("error", err))
+		return fiber.NewError(fiber.StatusBadRequest, "invalid request body")
 	}
 
 	if err := h.validator.Validate(body); err != nil {
