@@ -140,41 +140,27 @@ STATICFILES_FINDERS = [
 
 FILE_UPLOAD_MAX_MEMORY_SIZE = 2621440
 
-# Minio
+# S3 (django-storages)
 
-MINIO_STORAGE_ENDPOINT = env("MINIO_ENDPOINT", default=None)
+AWS_ACCESS_KEY_ID = env("AWS_ACCESS_KEY_ID", default=None)
 
-MINIO_STORAGE_ACCESS_KEY = env("MINIO_ACCESS_KEY", default=None)
+AWS_SECRET_ACCESS_KEY = env("AWS_SECRET_ACCESS_KEY", default=None)
 
-MINIO_STORAGE_SECRET_KEY = env("MINIO_SECRET_KEY", default=None)
+AWS_STORAGE_BUCKET_NAME = env("AWS_STORAGE_BUCKET_NAME", default=None)
 
-MINIO_STORAGE_USE_HTTPS = env("MINIO_USE_HTTPS", default=False)
+AWS_S3_ENDPOINT_URL = env("AWS_S3_ENDPOINT_URL", default=None)
 
-MINIO_STORAGE_MEDIA_BUCKET_NAME = env(
-    "MINIO_MEDIA_BUCKET_NAME", default="template-media"
-)
+AWS_S3_REGION_NAME = env("AWS_S3_REGION_NAME", default=None)
 
-MINIO_STORAGE_AUTO_CREATE_MEDIA_BUCKET = True
+AWS_S3_USE_SSL = env.bool("AWS_S3_USE_SSL", default=True)
 
-MINIO_STORAGE_AUTO_CREATE_MEDIA_POLICY = "GET_ONLY"
+AWS_S3_VERIFY = env.bool("AWS_S3_VERIFY", default=True)
 
-MINIO_DEFAULT_CUSTOM_ENDPOINT_URL = (
-    "https://"
-    if MINIO_STORAGE_USE_HTTPS
-    else "http://" + str(MINIO_STORAGE_ENDPOINT)
-)
-
-MINIO_STORAGE_MEDIA_URL = (
-    env("MINIO_CUSTOM_ENDPOINT_URL", default=MINIO_DEFAULT_CUSTOM_ENDPOINT_URL)
-    + "/"
-    f"{MINIO_STORAGE_MEDIA_BUCKET_NAME}"
-)
-
-MINIO_STORAGE_DEFAULT_ACL = "public-read"
+AWS_S3_FILE_OVERWRITE = False
 
 STORAGES = {
     "default": {
-        "BACKEND": "minio_storage.storage.MinioMediaStorage",
+        "BACKEND": "storages.backends.s3.S3Storage",
     },
     "staticfiles": {
         "BACKEND": "django.contrib.staticfiles.storage.StaticFilesStorage",
@@ -457,7 +443,7 @@ INSTALLED_APPS = [
     "django_guid",
     "django_prometheus",
     "ninja",
-    "minio_storage",
+    "storages",
     "silk",
     # Internal apps
     "apps.core",
