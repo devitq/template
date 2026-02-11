@@ -1,0 +1,12 @@
+name: template-project
+
+x-defaults: &defaults
+  project_directory: ./
+  env_file:
+    - ./.env.template
+
+include:
+  - path: ./deploy/compose/compose.yaml
+    <<: *defaults
+  - path: ./deploy/compose/compose.observability.yaml
+    <<: *defaults
