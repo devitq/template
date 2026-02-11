@@ -27,7 +27,7 @@ if [ "$OTEL_ENABLED" = "true" ]; then
         --service_name "${OTEL_SERVICE_NAME:-backend-django}" \
         gunicorn config.asgi:application \
         --workers "${GUNICORN_WORKERS:-4}" \
-        --worker-class "${GUNICORN_WORKER_CLASS:-uvicorn.workers.UvicornWorker}" \
+        --worker-class "${GUNICORN_WORKER_CLASS:-uvicorn_worker.UvicornWorker}" \
         --bind "${GUNICORN_BIND:-0.0.0.0:8080}" \
         --access-logfile "${GUNICORN_ACCESS_LOG:--}" \
         --error-logfile "${GUNICORN_ERROR_LOG:--}"
@@ -35,7 +35,7 @@ else
     echo "Starting without OpenTelemetry instrumentation..."
     exec gunicorn config.asgi:application \
         --workers "${GUNICORN_WORKERS:-4}" \
-        --worker-class "${GUNICORN_WORKER_CLASS:-uvicorn.workers.UvicornWorker}" \
+        --worker-class "${GUNICORN_WORKER_CLASS:-uvicorn_worker.UvicornWorker}" \
         --bind "${GUNICORN_BIND:-0.0.0.0:8080}" \
         --access-logfile "${GUNICORN_ACCESS_LOG:--}" \
         --error-logfile "${GUNICORN_ERROR_LOG:--}"
