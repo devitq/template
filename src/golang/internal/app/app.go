@@ -73,6 +73,17 @@ func New(ctx context.Context, cfg *config.Config, l *slog.Logger) (*App, error) 
 		return nil, err
 	}
 
+	if err := a.initValkey(); err != nil {
+		a.l.Warn("failed to init valkey", slog.Any("error", err))
+	}
+
+	if err := a.initS3(ctx); err != nil {
+		a.l.Warn("failed to init s3", slog.Any("error", err))
+	}
+
+	a.initKafkaWriter()
+	a.initKafkaReader()
+
 	v := validator.New()
 
 	queries := sqlcstorage.New(a.dbPool)
@@ -113,8 +124,29 @@ func (a *App) Stop(ctx context.Context) error {
 		}
 	}
 
+	if a.kafkaWriter != nil {
+		a.l.Info("Closing kafka writer...")
+		if err := a.kafkaWriter.Close(); err != nil {
+			stopErr = errors.Join(stopErr, fmt.Errorf("failed to close kafka writer: %w", err))
+		}
+	}
+
+	if a.kafkaReader != nil {
+		a.l.Info("Closing kafka reader...")
+		if err := a.kafkaReader.Close(); err != nil {
+			stopErr = errors.Join(stopErr, fmt.Errorf("failed to close kafka reader: %w", err))
+		}
+	}
+
+	if a.valkeyClient != nil {
+		a.l.Info("Closing valkey client...")
+		a.valkeyClient.Close()
+	}
+
 	a.l.Info("Closing database pool...")
-	a.dbPool.Close()
+	if a.dbPool != nil {
+		a.dbPool.Close()
+	}
 
 	a.l.Info("Stopping http server...")
 	if err := a.router.ShutdownWithContext(ctx); err != nil {

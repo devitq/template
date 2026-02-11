@@ -64,6 +64,14 @@ func msgForTag(tag string, param string) string {
 		return fmt.Sprintf("Must be at least %s", param)
 	case "max":
 		return fmt.Sprintf("Must be at most %s", param)
+	case "gt":
+		return fmt.Sprintf("Must be greater than %s", param)
+	case "lt":
+		return fmt.Sprintf("Must be less than %s", param)
+	case "gte":
+		return fmt.Sprintf("Must be greater than or equal to %s", param)
+	case "lte":
+		return fmt.Sprintf("Must be less than or equal to %s", param)
 	}
 	return fmt.Sprintf("Validation failed on the %s tag", tag)
 }
