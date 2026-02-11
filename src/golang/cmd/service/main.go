@@ -9,7 +9,7 @@ import (
 	"time"
 
 	"antifraud/internal/app"
-	"antifraud/internal/config"
+	"antifraud/internal/infra/config"
 	_ "go.uber.org/automaxprocs"
 )
 

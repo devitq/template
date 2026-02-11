@@ -108,7 +108,7 @@ clean:
 # generates code using sqlc
 [group('generate')]
 generate-sqlc:
-    @ go tool sqlc generate -f internal/db/sqlc/sqlc.yaml
+    @ go tool sqlc generate -f internal/infra/database/sqlc/sqlc.yaml
 
 alias g := generate-sqlc
 
@@ -122,6 +122,6 @@ alias s := generate-swagger
 # generates migrations using goose
 [group('generate')]
 generate-migrations:
-    @ go tool goose -dir internal/db/migrations create -s {migration_name} sql
+    @ go tool goose -dir internal/infra/database/migrations create -s {migration_name} sql
 
 alias m := generate-migrations
