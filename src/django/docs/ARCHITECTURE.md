@@ -19,6 +19,32 @@ They return QuerySets or model instances.
 ### 4. Domain (Models)
 Located in `apps/<app_name>/models.py`. Standard Django models.
 
+## Logging
+
+Logging is pre-configured and integrated with standard Django logging and OpenTelemetry.
+
+### Usage in Views/Services
+
+To use logging, obtain a logger instance for the project:
+
+```python
+import logging
+
+# Use the pre-defined project logger name
+logger = logging.getLogger("template")
+
+def my_view(request):
+    logger.info("Informational message")
+    try:
+        # ...
+    except Exception as e:
+        logger.error("Something went wrong: %s", e, exc_info=True)
+```
+
+### Configuration
+- In **development** (`DEBUG=True`), logs are output in a human-readable, colored format.
+- In **production** (`DEBUG=False`), logs are output in JSON format, suitable for log aggregators, and include a `correlation_id` (Trace ID) for request tracing.
+
 ## Why this pattern?
 - **Separation of Concerns**: Clear distinction between API logic and business logic.
 - **Testability**: Business logic can be tested independently of the HTTP layer.
