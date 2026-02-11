@@ -9,23 +9,28 @@ import (
 	"time"
 
 	_ "antifraud/api/openapi"
-	"antifraud/internal/config"
-	"antifraud/internal/db"
-	"antifraud/internal/db/sqlc/storage"
-	userrepo "antifraud/internal/repository/user"
-	userservice "antifraud/internal/application/service/user"
-	userhandler "antifraud/internal/transport/http/v1/user"
-	"github.com/aws/aws-sdk-go-v2/aws"
-	"github.com/aws/aws-sdk-go-v2/credentials"
+	"antifraud/internal/infra/config"
+	"antifraud/internal/infra/database"
+	sqlcstorage "antifraud/internal/infra/database/sqlc/storage"
+	"antifraud/internal/infra/kafka"
+	"antifraud/internal/infra/observability"
+	infrastorage "antifraud/internal/infra/storage"
+	"antifraud/internal/infra/valkey"
+	"antifraud/internal/infra/validator"
+	userrepo "antifraud/internal/adapter/repository/user"
+	userservice "antifraud/internal/usecase/user"
+	userhandler "antifraud/internal/adapter/handler/http/v1/user"
+	"antifraud/internal/adapter/handler/middleware"
 	"github.com/aws/aws-sdk-go-v2/service/s3"
-	"github.com/aws/smithy-go"
+	"github.com/gofiber/contrib/otelfiber/v2"
 	"github.com/gofiber/fiber/v2"
 	fiberrecover "github.com/gofiber/fiber/v2/middleware/recover"
 	fiberSwagger "github.com/gofiber/swagger"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/jackc/pgx/v5/stdlib"
-	"github.com/segmentio/kafka-go"
-	"github.com/valkey-io/valkey-go"
+	kafkago "github.com/segmentio/kafka-go"
+	valkeygo "github.com/valkey-io/valkey-go"
+	"go.opentelemetry.io/otel/trace"
 )
 
 type App struct {
@@ -34,15 +39,30 @@ type App struct {
 	router       *fiber.App
 	dbPool       *pgxpool.Pool
 	s3Client     *s3.Client
-	kafkaWriter  *kafka.Writer
-	kafkaReader  *kafka.Reader
-	valkeyClient valkey.Client
+	kafkaWriter  *kafkago.Writer
+	kafkaReader  *kafkago.Reader
+	valkeyClient valkeygo.Client
+	otelShutdown func(context.Context) error
 }
 
 func New(ctx context.Context, cfg *config.Config, l *slog.Logger) (*App, error) {
 	a := &App{
 		cfg: cfg,
 		l:   l,
+	}
+
+	if cfg.Otel.Enabled {
+		shutdown, err := observability.SetupOTEL(ctx, observability.OTELConfig{
+			ServiceName:           cfg.Otel.ServiceName,
+			CollectorURL:          cfg.Otel.CollectorURL,
+			UseTLS:                cfg.Otel.UseTLS,
+			CertFile:              cfg.Otel.CertFile,
+			MetricsExportInterval: time.Duration(cfg.Otel.MetricsExportInterval) * time.Second,
+		})
+		if err != nil {
+			return nil, fmt.Errorf("failed to setup otel: %w", err)
+		}
+		a.otelShutdown = shutdown
 	}
 
 	if err := a.initDB(ctx); err != nil {
@@ -53,16 +73,22 @@ func New(ctx context.Context, cfg *config.Config, l *slog.Logger) (*App, error) 
 		return nil, err
 	}
 
-	queries := storage.New(a.dbPool)
+	v := validator.New()
+
+	queries := sqlcstorage.New(a.dbPool)
 	userRepo := userrepo.New(queries)
 	userService := userservice.New(userRepo)
-	userHandler := userhandler.New(userService)
+	userHandler := userhandler.New(userService, v, a.l)
 
 	a.initFiber()
 
 	apiGroup := a.router.Group("/api/v1")
-	userGroup := apiGroup.Group("/user")
 
+	a.router.Get("/health", func(c *fiber.Ctx) error {
+		return c.SendStatus(fiber.StatusOK)
+	})
+
+	userGroup := apiGroup.Group("/user")
 	userHandler.Setup(userGroup)
 
 	return a, nil
@@ -80,6 +106,13 @@ func (a *App) Stop(ctx context.Context) error {
 
 	var stopErr error
 
+	if a.otelShutdown != nil {
+		a.l.Info("Shutting down OTEL...")
+		if err := a.otelShutdown(ctx); err != nil {
+			stopErr = errors.Join(stopErr, fmt.Errorf("failed to shutdown otel: %w", err))
+		}
+	}
+
 	a.l.Info("Closing database pool...")
 	a.dbPool.Close()
 
@@ -96,21 +129,12 @@ func (a *App) Stop(ctx context.Context) error {
 	return nil
 }
 
-func initDB(ctx context.Context, dbURL string, minIdleConns int32, maxConns int32) (*pgxpool.Pool, error) {
-	pool, err := pgxpool.New(ctx, dbURL)
-	if err != nil {
-		return nil, err
-	}
-
-	pool.Config().HealthCheckPeriod = time.Minute
-	pool.Config().MinIdleConns = minIdleConns
-	pool.Config().MaxConns = maxConns
-
-	return pool, nil
-}
-
 func (a *App) initDB(ctx context.Context) error {
-	dbPool, err := initDB(ctx, a.cfg.Postgres.URL, a.cfg.Postgres.MinIdleConns, a.cfg.Postgres.MaxConns)
+	dbPool, err := database.NewPostgresPool(ctx, database.PostgresConfig{
+		URL:          a.cfg.Postgres.URL,
+		MaxConns:     a.cfg.Postgres.MaxConns,
+		MinIdleConns: a.cfg.Postgres.MinIdleConns,
+	})
 	if err != nil {
 		return fmt.Errorf("failed to init db connection: %w", err)
 	}
@@ -119,13 +143,21 @@ func (a *App) initDB(ctx context.Context) error {
 }
 
 func (a *App) migrateDB() error {
-	return db.Migrate(sql.OpenDB(stdlib.GetConnector(*a.dbPool.Config().ConnConfig)))
+	tempDB := sql.OpenDB(stdlib.GetConnector(*a.dbPool.Config().ConnConfig))
+	defer tempDB.Close()
+	return database.Migrate(tempDB)
 }
 
 func (a *App) initFiber() {
-	a.router = fiber.New(fiber.Config{DisableStartupMessage: true})
+	a.router = fiber.New(fiber.Config{
+		DisableStartupMessage: true,
+		ErrorHandler:         middleware.ErrorHandler,
+	})
 
 	a.router.Use(fiberrecover.New())
+	if a.cfg.Otel.Enabled {
+		a.router.Use(otelfiber.Middleware())
+	}
 	a.router.Use(a.loggerMiddleware())
 
 	a.router.Get("/api/v1/docs/*", fiberSwagger.HandlerDefault)
@@ -161,6 +193,14 @@ func (a *App) loggerMiddleware() fiber.Handler {
 			slog.String("ip", clientIP),
 			slog.String("latency", latency.String()),
 		}
+
+		if a.cfg.Otel.Enabled {
+			span := trace.SpanFromContext(c.UserContext())
+			if span.SpanContext().IsValid() {
+				attrs = append(attrs, slog.String("traceId", span.SpanContext().TraceID().String()))
+				c.Locals("traceId", span.SpanContext().TraceID().String())
+			}
+		}
 		if err != nil {
 			attrs = append(attrs, slog.String("err", err.Error()))
 		}
@@ -172,57 +212,42 @@ func (a *App) loggerMiddleware() fiber.Handler {
 }
 
 func (a *App) initS3(ctx context.Context) error {
-	cfg := aws.Config{
-		Region:       a.cfg.S3.Region,
-		BaseEndpoint: aws.String(a.cfg.S3.Endpoint),
-		Credentials: aws.NewCredentialsCache(
-			credentials.NewStaticCredentialsProvider(
-				a.cfg.S3.AccessKey,
-				a.cfg.S3.SecretKey,
-				""),
-		),
-	}
-
-	a.s3Client = s3.NewFromConfig(cfg, func(o *s3.Options) {
-		o.UsePathStyle = true
-	})
-
-	_, err := a.s3Client.CreateBucket(ctx, &s3.CreateBucketInput{
-		Bucket: aws.String(a.cfg.S3.BucketName),
+	client, err := infrastorage.NewS3Client(ctx, infrastorage.S3Config{
+		Region:     a.cfg.S3.Region,
+		Endpoint:   a.cfg.S3.Endpoint,
+		AccessKey:  a.cfg.S3.AccessKey,
+		SecretKey:  a.cfg.S3.SecretKey,
+		BucketName: a.cfg.S3.BucketName,
 	})
 	if err != nil {
-		var apiError smithy.APIError
-		if errors.As(err, &apiError) && apiError.ErrorCode() == "BucketAlreadyOwnedByYou" {
-			return nil
-		}
-		return fmt.Errorf("failed to create s3 bucket: %w", err)
+		return err
 	}
-
+	a.s3Client = client
 	return nil
 }
 
 func (a *App) initKafkaWriter() {
-	a.kafkaWriter = &kafka.Writer{
-		Addr:                   kafka.TCP(a.cfg.Kafka.Addr),
-		AllowAutoTopicCreation: true,
-	}
+	a.kafkaWriter = kafka.NewKafkaWriter(kafka.KafkaConfig{
+		Addr: a.cfg.Kafka.Addr,
+	})
 }
 
 func (a *App) initKafkaReader() {
-	a.kafkaReader = kafka.NewReader(kafka.ReaderConfig{
-		Brokers:     []string{a.cfg.Kafka.Addr},
-		GroupID:     a.cfg.Kafka.ReaderGroupID,
-		GroupTopics: []string{a.cfg.Kafka.Topic},
+	a.kafkaReader = kafka.NewKafkaReader(kafka.KafkaConfig{
+		Addr:          a.cfg.Kafka.Addr,
+		ReaderGroupID: a.cfg.Kafka.ReaderGroupID,
+		Topic:         a.cfg.Kafka.Topic,
 	})
 }
 
 func (a *App) initValkey() error {
-	client, err := valkey.NewClient(valkey.ClientOption{
-		InitAddress: []string{a.cfg.Valkey.Addr},
-		Password:    a.cfg.Valkey.Password,
+	client, err := valkey.NewValkeyClient(valkey.ValkeyConfig{
+		Addr:     a.cfg.Valkey.Addr,
+		Username: a.cfg.Valkey.Username,
+		Password: a.cfg.Valkey.Password,
 	})
 	if err != nil {
-		return fmt.Errorf("failed to init Valkey connection: %w", err)
+		return err
 	}
 	a.valkeyClient = client
 	return nil
